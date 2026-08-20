@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { buildGrid, fetchWindGrid } from '../services/windGrid'
 
 // Fonti dati, tutte gratuite/open:
 // - Base + satellite: Esri World Imagery (tile pubbliche, uso libero)
@@ -42,10 +43,34 @@ const INITIAL_STYLE = {
   ]
 }
 
-export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState }) {
+const EMPTY_FC = { type: 'FeatureCollection', features: [] }
+
+/** Disegna un'icona a freccia (triangolo) e la registra come immagine SDF,
+ * così il colore può essere pilotato dai dati (velocità vento) via CSS-like
+ * expression invece che dover generare un'immagine per ogni colore. */
+function ensureArrowIcon(map) {
+  if (map.hasImage('wind-arrow')) return
+  const size = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.moveTo(size / 2, 3)
+  ctx.lineTo(size - 7, size - 8)
+  ctx.lineTo(size / 2, size - 16)
+  ctx.lineTo(7, size - 8)
+  ctx.closePath()
+  ctx.fill()
+  map.addImage('wind-arrow', ctx.getImageData(0, 0, size, size), { sdf: true })
+}
+
+export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState, windEnabled, windHourIndex, windRefreshKey, onWindFramesReady }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef([])
+  const windFramesRef = useRef([])
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -57,6 +82,37 @@ export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState }
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right')
     mapRef.current = map
+
+    map.on('load', () => {
+      ensureArrowIcon(map)
+      map.addSource('wind-grid', { type: 'geojson', data: EMPTY_FC })
+      map.addLayer({
+        id: 'wind-grid-layer',
+        type: 'symbol',
+        source: 'wind-grid',
+        layout: {
+          'icon-image': 'wind-arrow',
+          // dimensione icona proporzionale all'intensità del vento
+          'icon-size': ['interpolate', ['linear'], ['get', 'speed'], 0, 0.35, 15, 0.6, 35, 1],
+          // i dati arrivano come direzione "da cui soffia": +180 per farla
+          // puntare "verso dove va", più intuitivo a colpo d'occhio
+          'icon-rotate': ['+', ['get', 'direction'], 180],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          visibility: 'none'
+        },
+        paint: {
+          // scala colore: calma (ciano) → forte (ambra) → burrasca (rosso)
+          'icon-color': [
+            'interpolate', ['linear'], ['get', 'speed'],
+            0, '#3fe0d0',
+            15, '#ffb703',
+            30, '#ff5d5d'
+          ],
+          'icon-opacity': 0.9
+        }
+      })
+    })
 
     map.on('click', (e) => {
       onMapClick?.({ lon: e.lngLat.lng, lat: e.lngLat.lat })
@@ -123,6 +179,51 @@ export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState }
     if (map.isStyleLoaded()) drawRoute()
     else map.once('load', drawRoute)
   }, [waypoints])
+
+  // Mostra/nasconde il layer vento
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.getLayer('wind-grid-layer')) return
+    map.setLayoutProperty('wind-grid-layer', 'visibility', windEnabled ? 'visible' : 'none')
+  }, [windEnabled])
+
+  // Scarica la griglia vento per l'area visibile quando si attiva l'overlay
+  // o quando l'utente chiede esplicitamente un aggiornamento (windRefreshKey)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !windEnabled) return
+    let cancelled = false
+
+    const run = async () => {
+      const b = map.getBounds()
+      const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
+      const points = buildGrid(bbox, 7, 7)
+      try {
+        const { times, frames } = await fetchWindGrid(points, 24)
+        if (cancelled) return
+        windFramesRef.current = frames
+        onWindFramesReady?.(times)
+        const src = map.getSource('wind-grid')
+        if (src && frames[0]) src.setData(frames[0])
+      } catch (err) {
+        console.warn('Errore nel recupero della griglia vento', err)
+      }
+    }
+
+    if (map.isStyleLoaded()) run()
+    else map.once('load', run)
+
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windEnabled, windRefreshKey])
+
+  // Cambia il frame mostrato quando si sposta lo slider temporale
+  useEffect(() => {
+    const map = mapRef.current
+    const frame = windFramesRef.current[windHourIndex]
+    const src = map?.getSource('wind-grid')
+    if (src && frame) src.setData(frame)
+  }, [windHourIndex])
 
   return <div id="map-canvas" ref={containerRef} />
 }

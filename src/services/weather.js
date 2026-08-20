@@ -52,6 +52,21 @@ function normalizeConditions(marine, wind) {
 }
 
 /**
+ * Come getMarineConditions, ma restituisce solo la voce oraria più vicina
+ * all'istante corrente — comoda per un readout "condizioni adesso".
+ */
+export async function getCurrentConditions(lat, lon) {
+  const all = await getMarineConditions(lat, lon)
+  if (all.length === 0) return null
+  const now = Date.now()
+  return all.reduce((closest, c) => {
+    const diff = Math.abs(new Date(c.time).getTime() - now)
+    const closestDiff = Math.abs(new Date(closest.time).getTime() - now)
+    return diff < closestDiff ? c : closest
+  }, all[0])
+}
+
+/**
  * Scarica le previsioni per ogni waypoint di una rotta, per poterle
  * consultare offline durante la navigazione.
  */
