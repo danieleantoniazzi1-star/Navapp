@@ -442,11 +442,9 @@ input:focus-visible,
 }
 
 /* =========================================================
-   RESPONSIVE LAYOUT (PORTRAIT & MOBILE)
+   1. SMARTPHONE & TABLET IN VERTICALE (fino a 1024px)
    ========================================================= */
-
-@media (max-width: 768px) and (orientation: portrait) {
-  /* Console Bar a due righe compatte */
+@media (max-width: 1024px) and (orientation: portrait) {
   .console-bar {
     display: flex;
     flex-wrap: wrap;
@@ -479,7 +477,7 @@ input:focus-visible,
     display: inline !important;
   }
 
-  /* Pannelli fluttuanti (Rotta, Layer, Meteo) ancorati in basso */
+  /* Pannelli fluttuanti come Bottom Sheets */
   .panel {
     top: auto !important;
     bottom: 0 !important;
@@ -494,7 +492,6 @@ input:focus-visible,
     z-index: 30;
   }
 
-  /* Popup suggerimento ("Clicca sulla mappa..."): spostato in alto sotto la barra */
   .mode-hint {
     top: 75px !important;
     bottom: auto !important;
@@ -508,33 +505,45 @@ input:focus-visible,
     z-index: 15;
   }
 
-  /* Compattamento pannello previsioni (Rimuove lo stiramento verticale) */
-  .wind-timeline,
-  .forecast-panel {
+  .wind-timeline {
     top: 75px !important;
-    bottom: auto !important;  /* CRUCIALE: svincola il fondo del pannello */
     left: 50% !important;
-    right: auto !important;   /* Svincola il lato destro */
     transform: translateX(-50%) !important;
     width: 90% !important;
     max-width: 360px;
-    height: auto !important;
-    min-height: 0 !important;
-    padding: 10px 12px !important;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
     z-index: 25;
   }
 
-  .wind-timeline-title {
-    font-size: 10px;
+  .wind-timeline-title { font-size: 10px; }
+  .wind-slider { flex: 1 1 120px; width: auto; }
+  .wind-timeline-label { font-size: 10px; min-width: auto; }
+}
+
+/* =========================================================
+   2. SMARTPHONE IN ORIZZONTALE (Altezza ridotta < 500px)
+   ========================================================= */
+@media (max-height: 500px) and (orientation: landscape) {
+  .console-bar {
+    padding: 4px 12px;
+    gap: 12px;
   }
 
-  .wind-slider {
-    flex: 1 1 120px;
-    width: auto;
+  .readout { font-size: 11px; }
+  .readout strong { font-size: 12px; }
+
+  /* Compatti i pannelli angolari per non occupare tutta la mappa */
+  .panel {
+    max-height: 70vh;
+    padding: 8px;
+    font-size: 11px;
   }
 
-  .wind-timeline-label {
-    font-size: 10px;
-    min-width: auto;
+  .wind-timeline {
+    top: 50px;
+    padding: 4px 10px;
   }
 }
