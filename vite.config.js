@@ -22,7 +22,7 @@ export default defineConfig({
         description: 'Navigazione marina offline: mappa satellitare, carte nautiche, meteo mare, pianificazione rotte',
         theme_color: '#0b1622',
         background_color: '#0b1622',
-        display: 'standalone',
+        display: 'fullscreen',
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' }
