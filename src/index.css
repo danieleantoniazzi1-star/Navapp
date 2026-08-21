@@ -508,21 +508,19 @@ input:focus-visible,
     z-index: 15;
   }
 
-  /* Timeline Previsioni Vento: fluida, centrata e flessibile per schermi stretti */
-  /* Timeline Previsioni Vento: compatta senza spazi vuoti sopra/sotto */
-  .wind-timeline {
+  /* Compattamento pannello previsioni (Rimuove lo stiramento verticale) */
+  .wind-timeline,
+  .forecast-panel {
     top: 75px !important;
+    bottom: auto !important;  /* CRUCIALE: svincola il fondo del pannello */
     left: 50% !important;
+    right: auto !important;   /* Svincola il lato destro */
     transform: translateX(-50%) !important;
     width: 90% !important;
     max-width: 360px;
-    height: auto !important;       /* Elimina l'altezza in eccesso */
-    min-height: 0 !important;    /* Rimuove qualsiasi vincolo di altezza minima */
-    align-content: flex-start !important; /* Compatta le righe verso l'alto */
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 12px !important; /* Padding stretto ed equilibrato */
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 10px 12px !important;
     z-index: 25;
   }
 
