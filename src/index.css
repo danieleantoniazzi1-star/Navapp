@@ -440,3 +440,64 @@ input:focus-visible,
   box-shadow: 0 0 6px var(--accent-cyan);
   transition: width 0.2s ease;
 }
+
+/* Layout Responsive per Smartphone in Verticale */
+@media (orientation: portrait) {
+  /* Barra strumenti scorrevole e compatta */
+  .console-bar {
+    gap: 10px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Rimuove lo spazio vuoto centrale per compattare gli elementi */
+  .console-spacer {
+    display: none;
+  }
+
+  /* Impedisce il restringimento degli elementi nella barra */
+  .console-brand,
+  .readout,
+  .console-bar button {
+    flex-shrink: 0;
+  }
+
+  .readout {
+    font-size: 11px;
+  }
+
+  .readout strong {
+    font-size: 12px;
+  }
+
+  /* Pannelli ancorati in basso estilo "Bottom Sheet" mobile */
+  .panel {
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-height: 50vh;
+    overflow-y: auto;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+  }
+
+  /* Timeline del vento ridimensionata per schermi stretti */
+  .wind-timeline {
+    top: 50px;
+    width: 90%;
+    gap: 6px;
+  }
+
+  .wind-slider {
+    width: 100px;
+  }
+
+  /* Nasconde il testo dei pulsanti per mostrare solo icone/sigle */
+  .console-bar button .btn-label {
+    display: none;
+  }
+}
