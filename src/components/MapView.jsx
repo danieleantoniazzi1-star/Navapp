@@ -37,6 +37,9 @@ const SOURCES = {
 
 const INITIAL_STYLE = {
   version: 8,
+  // FONDAMENTALE: i glyphs permettono a MapLibre di renderizzare il testo (nomi navi).
+  // Senza questa riga, qualsiasi layer con un 'text-field' si nasconde.
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     satellite: SOURCES.satellite,
     osmBase: SOURCES.osmBase,
@@ -69,6 +72,31 @@ function ensureArrowIcon(map) {
   map.addImage('wind-arrow', ctx.getImageData(0, 0, size, size), { sdf: true })
 }
 
+function ensureShipIcon(map) {
+  if (map.hasImage('ais-ship-icon')) return
+  const size = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+
+  // Disegna la sagoma della nave
+  ctx.beginPath()
+  ctx.moveTo(16, 2)
+  ctx.lineTo(26, 28)
+  ctx.lineTo(16, 22)
+  ctx.lineTo(6, 28)
+  ctx.closePath()
+
+  ctx.fillStyle = '#ffb703'
+  ctx.fill()
+  ctx.strokeStyle = '#0a1420'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  map.addImage('ais-ship-icon', ctx.getImageData(0, 0, size, size))
+}
+
 function calculateBearing(lat1, lon1, lat2, lon2) {
   const dLon = ((lon2 - lon1) * Math.PI) / 180
   const l1 = (lat1 * Math.PI) / 180
@@ -94,7 +122,9 @@ export default function MapView({
   waveRefreshKey,
   onWaveFramesReady,
   onWaveError,
-  gpsPosition
+  gpsPosition,
+  aisEnabled = false,
+  aisApiKey = ''
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -116,6 +146,7 @@ export default function MapView({
 
     map.on('load', () => {
       ensureArrowIcon(map)
+      ensureShipIcon(map)
 
       // Layer Vento
       map.addSource('wind-grid', { type: 'geojson', data: EMPTY_FC })
@@ -166,6 +197,32 @@ export default function MapView({
             3.0, '#ff5d5d'
           ],
           'icon-opacity': 0.95
+        }
+      })
+
+      // Layer AIS Navi
+      map.addSource('ais-vessels', { type: 'geojson', data: EMPTY_FC })
+      map.addLayer({
+        id: 'ais-vessels-layer',
+        type: 'symbol',
+        source: 'ais-vessels',
+        layout: {
+          'icon-image': 'ais-ship-icon',
+          'icon-size': 0.85,
+          'icon-rotate': ['get', 'cog'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Regular'], // Deve corrispondere al font caricato in INITIAL_STYLE
+          'text-size': 10,
+          'text-offset': [0, 1.5],
+          'text-anchor': 'top',
+          visibility: aisEnabled ? 'visible' : 'none'
+        },
+        paint: {
+          'text-color': '#e7f1f6',
+          'text-halo-color': '#0a1420',
+          'text-halo-width': 1
         }
       })
     })
@@ -249,6 +306,119 @@ export default function MapView({
     }
   }, [waveEnabled])
 
+  // WebSocket Live Stream AIS Navi
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (map.getLayer('ais-vessels-layer')) {
+      map.setLayoutProperty('ais-vessels-layer', 'visibility', aisEnabled ? 'visible' : 'none')
+    }
+
+    if (!aisEnabled || !aisApiKey) {
+      const src = map.getSource('ais-vessels')
+      if (src) src.setData(EMPTY_FC)
+      return
+    }
+
+    let socket = null
+    const vesselsMap = new Map()
+
+    const connectAis = () => {
+      try {
+        socket = new WebSocket('wss://stream.aisstream.io/v0/stream')
+
+        socket.onopen = () => {
+          const b = map.getBounds()
+          let boundingBox = [[37.0, 8.0], [45.5, 19.0]]
+          
+          if (b) {
+            // Estende l'area di 2 gradi rispetto allo schermo per coprire navi in avvicinamento
+            const minLat = Math.max(-90, b.getSouth() - 2)
+            const minLon = Math.max(-180, b.getWest() - 2)
+            const maxLat = Math.min(90, b.getNorth() + 2)
+            const maxLon = Math.min(180, b.getEast() + 2)
+            boundingBox = [[minLat, minLon], [maxLat, maxLon]]
+          }
+
+          const subscription = {
+            APIKey: aisApiKey,
+            BoundingBoxes: [boundingBox]
+          }
+          socket.send(JSON.stringify(subscription))
+        }
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            const meta = data.MetaData
+            const type = data.MessageType
+            
+            // Supporta navi commerciali (Classe A) e da diporto/pesca (Classe B)
+            const report = data.Message[type]
+
+            // Verifica che il report contenga coordinate valide
+            if (report && 'Latitude' in report && 'Longitude' in report && report.Latitude < 90) {
+              const mmsi = report.UserID || meta?.MMSI
+              if (!mmsi) return
+
+              vesselsMap.set(mmsi, {
+                mmsi: mmsi,
+                name: meta?.ShipName?.trim() || `MMSI ${mmsi}`,
+                lat: report.Latitude,
+                lon: report.Longitude,
+                cog: report.Cog || 0,
+                sog: report.Sog || 0,
+                updatedAt: Date.now()
+              })
+
+              // Pulisce le navi obsolete (> 15 minuti)
+              const cutoff = Date.now() - 15 * 60 * 1000
+              for (const [key, v] of vesselsMap.entries()) {
+                if (v.updatedAt < cutoff) vesselsMap.delete(key)
+              }
+
+              const geojson = {
+                type: 'FeatureCollection',
+                features: Array.from(vesselsMap.values()).map((v) => ({
+                  type: 'Feature',
+                  geometry: {
+                    type: 'Point',
+                    coordinates: [v.lon, v.lat]
+                  },
+                  properties: {
+                    mmsi: v.mmsi,
+                    name: v.name,
+                    cog: v.cog,
+                    sog: v.sog
+                  }
+                }))
+              }
+
+              const src = map.getSource('ais-vessels')
+              if (src) src.setData(geojson)
+            }
+          } catch (err) {
+            // Ignora errori isolati di pacchetti malformati
+          }
+        }
+      } catch (err) {
+        console.error('Errore connessione AIS:', err)
+      }
+    }
+
+    if (map.getSource('ais-vessels') || map.isStyleLoaded()) {
+      connectAis()
+    } else {
+      map.once('load', connectAis)
+    }
+
+    return () => {
+      if (socket) socket.close()
+      vesselsMap.clear()
+    }
+  }, [aisEnabled, aisApiKey])
+
   // Fetch dati vento
   useEffect(() => {
     const map = mapRef.current
@@ -262,7 +432,6 @@ export default function MapView({
         if (!b) return
         const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
         
-        // --- AUMENTATA LA DENSITA' DELLA GRIGLIA DA 8x8 a 12x12 ---
         const points = buildGrid(bbox, 12, 12)
 
         const { times, frames } = await fetchWindGrid(points)
@@ -302,7 +471,6 @@ export default function MapView({
         if (!b) return
         const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
         
-        // --- AUMENTATA LA DENSITA' DELLA GRIGLIA DA 8x8 a 12x12 ---
         const points = buildGrid(bbox, 12, 12)
 
         const { times, frames } = await fetchWaveGrid(points)
@@ -359,13 +527,11 @@ export default function MapView({
       return
     }
 
-    // Calcolo rotta verso il primo waypoint
     const targetWp = waypoints && waypoints.length > 0 ? waypoints[0] : null
     const bearingToTarget = targetWp
       ? calculateBearing(gpsPosition.lat, gpsPosition.lon, targetWp.lat, targetWp.lon)
       : null
 
-    // Linea tratteggiata sulla mappa tra GPS e WP1
     const updateGpsLine = () => {
       const lineGeojson = targetWp ? {
         type: 'Feature',
@@ -398,7 +564,6 @@ export default function MapView({
     if (map.isStyleLoaded()) updateGpsLine()
     else map.once('load', updateGpsLine)
 
-    // Tacche del goniometro (260px x 260px)
     const ticksSvg = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map(deg => {
       const rad = ((deg - 90) * Math.PI) / 180
       const x1 = 130 + 92 * Math.cos(rad)
@@ -408,7 +573,6 @@ export default function MapView({
       return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#000000" stroke-width="2.5"/>`
     }).join('')
 
-    // Freccia direzionale ambra + badge con gradi di rotta verso WP1
     let targetPointerHtml = ''
     if (bearingToTarget != null) {
       const rad = ((bearingToTarget - 90) * Math.PI) / 180
@@ -432,7 +596,6 @@ export default function MapView({
 
     const htmlContent = `
       <div style="position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-        <!-- GONIOMETRO ANCORATO ALL'ORIENTAMENTO DELLA MAPPA -->
         <svg width="260" height="260" viewBox="0 0 260 260" style="position: absolute; top:0; left:0; filter: drop-shadow(0px 0px 2.5px rgba(255, 255, 255, 0.9));">
           <circle cx="130" cy="130" r="104" stroke="#000000" stroke-width="2.5" fill="none" stroke-dasharray="3 3"/>
           ${ticksSvg}
@@ -443,12 +606,10 @@ export default function MapView({
           ${targetPointerHtml}
         </svg>
 
-        <!-- FRECCIA PRUA GPS/BUSSOLA -->
         <div style="position: absolute; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; transition: transform 0.3s ease; transform: ${headingTransform}; opacity: ${headingOpacity};">
           <div style="width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 22px solid #3fe0d0; transform: translateY(-44px); filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));"></div>
         </div>
 
-        <!-- PUNTO GPS CENTRALE -->
         <div style="width: 14px; height: 14px; background: #3fe0d0; border: 2.5px solid #0a1420; border-radius: 50%; box-shadow: 0 0 8px #3fe0d0, 0 0 4px rgba(0,0,0,0.8); z-index: 5;"></div>
       </div>
     `
@@ -474,7 +635,6 @@ export default function MapView({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div id="map-canvas" ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* MIRINO CENTRALE */}
       <div
         style={{
           position: 'absolute',
@@ -485,7 +645,7 @@ export default function MapView({
           zIndex: 10,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'center', // Fixato warning camelCase per React
           width: '28px',
           height: '28px',
           filter: 'drop-shadow(0px 0px 2px rgba(255, 255, 255, 0.8))'
