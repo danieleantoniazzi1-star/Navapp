@@ -8,7 +8,7 @@ import ForecastPanel from './components/ForecastPanel.jsx'
 import { watchPosition, requestCompass } from './services/geolocation.js'
 
 function toBBox(center, zoom) {
-  const span = 4 / Math.pow(2, zoom) * 40
+  const span = (4 / Math.pow(2, zoom)) * 40
   return {
     minLon: center.lon - span,
     maxLon: center.lon + span,
@@ -18,6 +18,14 @@ function toBBox(center, zoom) {
 }
 
 export default function App() {
+  // Stato visibilità pannelli sovrapposti
+  const [showOffline, setShowOffline] = useState(false)
+  const [showLayers, setShowLayers] = useState(false)
+  const [showRoute, setShowRoute] = useState(false)
+  const [showForecast, setShowForecast] = useState(false)
+  const [showWeather, setShowWeather] = useState(false)
+
+  // Stato Layer Mappa
   const [layerState, setLayerState] = useState({
     satellite: true,
     osmBase: false,
@@ -42,7 +50,7 @@ export default function App() {
   const [waveTimes, setWaveTimes] = useState([])
   const [waveError, setWaveError] = useState(null)
 
-  // Stato GPS
+  // Stato GPS & Bussola
   const [gpsEnabled, setGpsEnabled] = useState(false)
   const [gpsPosition, setGpsPosition] = useState(null)
   const [gpsError, setGpsError] = useState(null)
@@ -135,6 +143,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {/* BARRA DEGLI STRUMENTI SUPERIORE */}
       <header className="console-bar">
         <div className="console-brand">
           <span className="dot" />
@@ -179,11 +188,59 @@ export default function App() {
 
         <div className="console-spacer" />
 
-        <button className={`btn ${gpsEnabled ? 'primary' : ''}`} onClick={toggleGps} style={{ flex: 'none', padding: '7px 14px' }}>
-          {gpsEnabled ? 'GPS: ON' : 'Attiva GPS'}
-        </button>
+        {/* PULSANTI TOGGLE INTERFACCIA */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            className={`btn ${showOffline ? 'primary' : ''}`}
+            onClick={() => setShowOffline((prev) => !prev)}
+            style={{ flex: 'none' }}
+          >
+            OFFLINE
+          </button>
+
+          <button
+            className={`btn ${showLayers ? 'primary' : ''}`}
+            onClick={() => setShowLayers((prev) => !prev)}
+            style={{ flex: 'none' }}
+          >
+            LIVELLI
+          </button>
+
+          <button
+            className={`btn ${showRoute ? 'primary' : ''}`}
+            onClick={() => setShowRoute((prev) => !prev)}
+            style={{ flex: 'none' }}
+          >
+            ROTTA
+          </button>
+
+          <button
+            className={`btn ${showForecast ? 'primary' : ''}`}
+            onClick={() => setShowForecast((prev) => !prev)}
+            style={{ flex: 'none' }}
+          >
+            PREVISIONI
+          </button>
+
+          <button
+            className={`btn ${showWeather ? 'primary' : ''}`}
+            onClick={() => setShowWeather((prev) => !prev)}
+            style={{ flex: 'none' }}
+          >
+            METEO
+          </button>
+
+          <button
+            className={`btn ${gpsEnabled ? 'primary' : ''}`}
+            onClick={toggleGps}
+            style={{ flex: 'none', padding: '7px 14px', marginLeft: '4px' }}
+          >
+            {gpsEnabled ? 'GPS: ON' : 'Attiva GPS'}
+          </button>
+        </div>
       </header>
 
+      {/* VIEWPORT MAPPA E PANNELLI */}
       <div className="map-area">
         <MapView
           onMapClick={handleMapClick}
@@ -203,23 +260,29 @@ export default function App() {
           gpsPosition={gpsEnabled ? gpsPosition : null}
         />
 
-        <ForecastPanel
-          mode={forecastMode}
-          onModeChange={setForecastMode}
-          times={activeTimes}
-          hourIndex={activeHourIndex}
-          onHourChange={handleHourChange}
-          onRefresh={handleRefresh}
-          loading={activeLoading}
-          error={activeError}
-        />
+        {/* MOSTRA PANNELLI SOLO SE REQUISITI DA BARRA */}
+        {showForecast && (
+          <ForecastPanel
+            mode={forecastMode}
+            onModeChange={setForecastMode}
+            times={activeTimes}
+            hourIndex={activeHourIndex}
+            onHourChange={handleHourChange}
+            onRefresh={handleRefresh}
+            loading={activeLoading}
+            error={activeError}
+          />
+        )}
 
-        <OfflinePanel currentBBox={toBBox(view, view.zoom)} currentZoom={view.zoom} />
-        <LayerPanel layerState={layerState} setLayerState={setLayerState} />
-        <RoutePlanner waypoints={waypoints} setWaypoints={setWaypoints} />
-        <WeatherPanel lat={weatherLat} lon={weatherLon} source={weatherSource} />
+        {showOffline && <OfflinePanel currentBBox={toBBox(view, view.zoom)} currentZoom={view.zoom} />}
+        {showLayers && <LayerPanel layerState={layerState} setLayerState={setLayerState} />}
+        {showRoute && <RoutePlanner waypoints={waypoints} setWaypoints={setWaypoints} />}
+        {showWeather && <WeatherPanel lat={weatherLat} lon={weatherLon} source={weatherSource} />}
 
-        <div className="mode-hint">Clicca sulla mappa per aggiungere un waypoint alla rotta</div>
+        {/* GUIDA WAYPOINT SULLA MAPPA */}
+        {showRoute && (
+          <div className="mode-hint">Clicca sulla mappa per aggiungere un waypoint alla rotta</div>
+        )}
       </div>
     </div>
   )
