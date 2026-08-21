@@ -477,7 +477,7 @@ input:focus-visible,
     display: inline !important;
   }
 
-  /* Pannelli fluttuanti come Bottom Sheets */
+  /* Pannelli fluttuanti come Bottom Sheets (Rotta, Layer, Meteo) */
   .panel {
     top: auto !important;
     bottom: 0 !important;
@@ -505,16 +505,22 @@ input:focus-visible,
     z-index: 15;
   }
 
+  /* Timeline Previsioni Vento: compatta e aderente al contenuto */
   .wind-timeline {
     top: 75px !important;
+    bottom: auto !important;       /* CRUCIALE: rompe lo stiramento verticale di .panel */
     left: 50% !important;
+    right: auto !important;
     transform: translateX(-50%) !important;
     width: 90% !important;
     max-width: 360px;
+    height: auto !important;      /* Impedisce lo stiramento verticale */
+    min-height: 0 !important;
     flex-wrap: wrap;
     justify-content: center;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 8px 12px !important;
+    border-radius: 8px !important;
     z-index: 25;
   }
 
@@ -535,7 +541,6 @@ input:focus-visible,
   .readout { font-size: 11px; }
   .readout strong { font-size: 12px; }
 
-  /* Compatti i pannelli angolari per non occupare tutta la mappa */
   .panel {
     max-height: 70vh;
     padding: 8px;
@@ -544,6 +549,8 @@ input:focus-visible,
 
   .wind-timeline {
     top: 50px;
+    bottom: auto !important;
+    height: auto !important;
     padding: 4px 10px;
   }
 }
