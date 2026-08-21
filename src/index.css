@@ -441,38 +441,58 @@ input:focus-visible,
   transition: width 0.2s ease;
 }
 
-/* Layout Responsive per Smartphone in Verticale */
-@media (orientation: portrait) {
-  /* Barra strumenti scorrevole e compatta */
+/* =========================================================
+   RESPONSIVE LAYOUT (PORTRAIT & MOBILE)
+   ========================================================= */
+
+@media (max-width: 768px) and (orientation: portrait) {
+  /* Console Bar: due righe ben separate (Telemetria sopra, Pulsanti sotto) */
   .console-bar {
-    gap: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
     padding: 6px 10px;
-    overflow-x: auto;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    background: var(--bg-panel-raised);
   }
 
-  /* Rimuove lo spazio vuoto centrale per compattare gli elementi */
+  .console-brand {
+    font-size: 12px;
+  }
+
+  /* Nasconde lo spaziatore per compattare gli elementi */
   .console-spacer {
     display: none;
   }
 
-  /* Impedisce il restringimento degli elementi nella barra */
-  .console-brand,
-  .readout,
-  .console-bar button {
-    flex-shrink: 0;
-  }
-
+  /* Dimensioni compatte ed esplicite per i readout di telemetria */
   .readout {
-    font-size: 11px;
+    font-size: 10px;
+    line-height: 1.1;
   }
 
   .readout strong {
-    font-size: 12px;
+    font-size: 11px;
   }
 
-  /* Pannelli ancorati in basso estilo "Bottom Sheet" mobile */
+  /* I pulsanti di controllo vanno su una riga dedicata in basso, ben distanziati */
+  .console-bar button,
+  .console-bar .btn {
+    flex: 1 1 auto;
+    min-width: 50px;
+    padding: 6px 4px;
+    font-size: 10px;
+    text-align: center;
+    margin: 2px 0;
+  }
+
+  /* Mostra sempre le etichette dei pulsanti ben leggibili */
+  .console-bar button .btn-label {
+    display: inline !important;
+  }
+
+  /* Pannelli fluttuanti: trasformati in Bottom Sheets ancorati in basso */
   .panel {
     top: auto !important;
     bottom: 0 !important;
@@ -481,23 +501,20 @@ input:focus-visible,
     width: 100% !important;
     max-height: 50vh;
     overflow-y: auto;
-    border-radius: 12px 12px 0 0;
+    border-radius: 14px 14px 0 0;
     border-bottom: none;
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.6);
   }
 
-  /* Timeline del vento ridimensionata per schermi stretti */
+  /* Ridimensionamento barra timeline del vento */
   .wind-timeline {
-    top: 50px;
-    width: 90%;
-    gap: 6px;
+    top: 90px;
+    width: 92%;
+    padding: 6px 10px;
+    font-size: 10px;
   }
 
   .wind-slider {
-    width: 100px;
-  }
-
-  /* Nasconde il testo dei pulsanti per mostrare solo icone/sigle */
-  .console-bar button .btn-label {
-    display: none;
+    width: 90px;
   }
 }
