@@ -1,27 +1,35 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
+import { registerOfflineProtocol } from '../services/mapProtocol'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { buildGrid, fetchWindGrid } from '../services/windGrid'
 import { fetchWaveGrid } from '../services/waveGrid'
+
+// Registra il protocollo offline per la cache IndexedDB
+registerOfflineProtocol()
 
 const SOURCES = {
   satellite: {
     type: 'raster',
     tiles: [
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      'offline://satellite/{z}/{x}/{y}?url=https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
     ],
     tileSize: 256,
     attribution: 'Esri, Maxar, Earthstar Geographics'
   },
   osmBase: {
     type: 'raster',
-    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+    tiles: [
+      'offline://osmBase/{z}/{x}/{y}?url=https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+    ],
     tileSize: 256,
     attribution: '© OpenStreetMap contributors'
   },
   seamark: {
     type: 'raster',
-    tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+    tiles: [
+      'offline://seamark/{z}/{x}/{y}?url=https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
+    ],
     tileSize: 256,
     attribution: '© OpenSeaMap contributors'
   }
@@ -59,6 +67,16 @@ function ensureArrowIcon(map) {
   ctx.closePath()
   ctx.fill()
   map.addImage('wind-arrow', ctx.getImageData(0, 0, size, size), { sdf: true })
+}
+
+function calculateBearing(lat1, lon1, lat2, lon2) {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const l1 = (lat1 * Math.PI) / 180
+  const l2 = (lat2 * Math.PI) / 180
+  const y = Math.sin(dLon) * Math.cos(l2)
+  const x = Math.cos(l1) * Math.sin(l2) - Math.sin(l1) * Math.cos(l2) * Math.cos(dLon)
+  let brng = (Math.atan2(y, x) * 180) / Math.PI
+  return (Math.round(brng) + 360) % 360
 }
 
 export default function MapView({
@@ -145,7 +163,7 @@ export default function MapView({
             'interpolate', ['linear'], ['get', 'height'],
             0, '#3fe0d0',
             1.5, '#ffb703',
-            30, '#ff5d5d'
+            3.0, '#ff5d5d'
           ],
           'icon-opacity': 0.95
         }
@@ -172,7 +190,7 @@ export default function MapView({
     map.setPaintProperty('seamark', 'raster-opacity', layerState.seamarkOpacity)
   }, [layerState])
 
-  // Disegna waypoint
+  // Disegna waypoint (WP1 in giallo chiaro #ffe066)
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -185,7 +203,7 @@ export default function MapView({
       el.style.width = '14px'
       el.style.height = '14px'
       el.style.borderRadius = '50%'
-      el.style.background = i === 0 ? '#3fe0d0' : '#ffb703'
+      el.style.background = i === 0 ? '#ffe066' : '#ffb703'
       el.style.border = '2px solid #0a1420'
       el.style.boxShadow = '0 0 6px rgba(0,0,0,0.6)'
       const marker = new maplibregl.Marker({ element: el })
@@ -243,7 +261,9 @@ export default function MapView({
         const b = map.getBounds()
         if (!b) return
         const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
-        const points = buildGrid(bbox, 8, 8)
+        
+        // --- AUMENTATA LA DENSITA' DELLA GRIGLIA DA 8x8 a 12x12 ---
+        const points = buildGrid(bbox, 12, 12)
 
         const { times, frames } = await fetchWindGrid(points)
         if (cancelled) return
@@ -281,7 +301,9 @@ export default function MapView({
         const b = map.getBounds()
         if (!b) return
         const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
-        const points = buildGrid(bbox, 8, 8)
+        
+        // --- AUMENTATA LA DENSITA' DELLA GRIGLIA DA 8x8 a 12x12 ---
+        const points = buildGrid(bbox, 12, 12)
 
         const { times, frames } = await fetchWaveGrid(points)
         if (cancelled) return
@@ -323,7 +345,7 @@ export default function MapView({
     if (src && frame) src.setData(frame)
   }, [waveHourIndex])
 
-  // Marker GPS
+  // Marker GPS con Goniometro orientato geograficamente
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -331,36 +353,128 @@ export default function MapView({
     if (!gpsPosition) {
       gpsMarkerRef.current?.remove()
       gpsMarkerRef.current = null
+      if (map.getSource('gps-target-line')) {
+        map.getSource('gps-target-line').setData({ type: 'FeatureCollection', features: [] })
+      }
       return
     }
 
+    // Calcolo rotta verso il primo waypoint
+    const targetWp = waypoints && waypoints.length > 0 ? waypoints[0] : null
+    const bearingToTarget = targetWp
+      ? calculateBearing(gpsPosition.lat, gpsPosition.lon, targetWp.lat, targetWp.lon)
+      : null
+
+    // Linea tratteggiata sulla mappa tra GPS e WP1
+    const updateGpsLine = () => {
+      const lineGeojson = targetWp ? {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [gpsPosition.lon, gpsPosition.lat],
+            [targetWp.lon, targetWp.lat]
+          ]
+        }
+      } : { type: 'FeatureCollection', features: [] }
+
+      if (map.getSource('gps-target-line')) {
+        map.getSource('gps-target-line').setData(lineGeojson)
+      } else if (targetWp) {
+        map.addSource('gps-target-line', { type: 'geojson', data: lineGeojson })
+        map.addLayer({
+          id: 'gps-target-line',
+          type: 'line',
+          source: 'gps-target-line',
+          paint: {
+            'line-color': '#3fe0d0',
+            'line-width': 2,
+            'line-dasharray': [3, 2]
+          }
+        })
+      }
+    }
+
+    if (map.isStyleLoaded()) updateGpsLine()
+    else map.once('load', updateGpsLine)
+
+    // Tacche del goniometro (260px x 260px)
+    const ticksSvg = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map(deg => {
+      const rad = ((deg - 90) * Math.PI) / 180
+      const x1 = 130 + 92 * Math.cos(rad)
+      const y1 = 130 + 92 * Math.sin(rad)
+      const x2 = 130 + 104 * Math.cos(rad)
+      const y2 = 130 + 104 * Math.sin(rad)
+      return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#000000" stroke-width="2.5"/>`
+    }).join('')
+
+    // Freccia direzionale ambra + badge con gradi di rotta verso WP1
+    let targetPointerHtml = ''
+    if (bearingToTarget != null) {
+      const rad = ((bearingToTarget - 90) * Math.PI) / 180
+      const tx = 130 + 100 * Math.cos(rad)
+      const ty = 130 + 100 * Math.sin(rad)
+
+      targetPointerHtml = `
+        <line x1="130" y1="130" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="#ffb703" stroke-width="3" stroke-dasharray="4 2"/>
+        <g transform="translate(${tx.toFixed(1)}, ${ty.toFixed(1)}) rotate(${bearingToTarget})">
+          <polygon points="0,-9 6,6 -6,6" fill="#ffb703" stroke="#0a1420" stroke-width="1.5"/>
+        </g>
+        <g transform="translate(130, 238)">
+          <rect x="-28" y="-10" width="56" height="18" rx="4" fill="#0a1420" stroke="#ffb703" stroke-width="1.5"/>
+          <text x="0" y="2" fill="#ffb703" font-size="11" font-weight="bold" font-family="'IBM Plex Mono', monospace" text-anchor="middle" dominant-baseline="middle">${bearingToTarget}°</text>
+        </g>
+      `
+    }
+
+    const headingTransform = gpsPosition.heading != null ? `rotate(${gpsPosition.heading}deg)` : 'rotate(0deg)'
+    const headingOpacity = gpsPosition.heading != null ? '1' : '0'
+
+    const htmlContent = `
+      <div style="position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+        <!-- GONIOMETRO ANCORATO ALL'ORIENTAMENTO DELLA MAPPA -->
+        <svg width="260" height="260" viewBox="0 0 260 260" style="position: absolute; top:0; left:0; filter: drop-shadow(0px 0px 2.5px rgba(255, 255, 255, 0.9));">
+          <circle cx="130" cy="130" r="104" stroke="#000000" stroke-width="2.5" fill="none" stroke-dasharray="3 3"/>
+          ${ticksSvg}
+          <text x="130" y="18" fill="#000000" font-size="14" font-weight="bold" font-family="'IBM Plex Mono', monospace" text-anchor="middle">N</text>
+          <text x="246" y="135" fill="#000000" font-size="12" font-weight="bold" font-family="'IBM Plex Mono', monospace" text-anchor="middle">E</text>
+          <text x="130" y="252" fill="#000000" font-size="12" font-weight="bold" font-family="'IBM Plex Mono', monospace" text-anchor="middle">S</text>
+          <text x="14" y="135" fill="#000000" font-size="12" font-weight="bold" font-family="'IBM Plex Mono', monospace" text-anchor="middle">W</text>
+          ${targetPointerHtml}
+        </svg>
+
+        <!-- FRECCIA PRUA GPS/BUSSOLA -->
+        <div style="position: absolute; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; transition: transform 0.3s ease; transform: ${headingTransform}; opacity: ${headingOpacity};">
+          <div style="width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 22px solid #3fe0d0; transform: translateY(-44px); filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));"></div>
+        </div>
+
+        <!-- PUNTO GPS CENTRALE -->
+        <div style="width: 14px; height: 14px; background: #3fe0d0; border: 2.5px solid #0a1420; border-radius: 50%; box-shadow: 0 0 8px #3fe0d0, 0 0 4px rgba(0,0,0,0.8); z-index: 5;"></div>
+      </div>
+    `
+
     if (!gpsMarkerRef.current) {
       const el = document.createElement('div')
-      el.className = 'gps-marker'
-      el.innerHTML = '<div class="gps-heading"><div class="gps-arrow"></div></div><div class="gps-dot"></div>'
-      gpsMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
+      el.innerHTML = htmlContent
+      gpsMarkerRef.current = new maplibregl.Marker({
+        element: el,
+        anchor: 'center',
+        rotationAlignment: 'map',
+        pitchAlignment: 'map'
+      })
         .setLngLat([gpsPosition.lon, gpsPosition.lat])
         .addTo(map)
     } else {
+      gpsMarkerRef.current.getElement().innerHTML = htmlContent
       gpsMarkerRef.current.setLngLat([gpsPosition.lon, gpsPosition.lat])
     }
-
-    const headingEl = gpsMarkerRef.current.getElement().querySelector('.gps-heading')
-    if (headingEl) {
-      if (gpsPosition.heading != null) {
-        headingEl.style.opacity = '1'
-        headingEl.style.transform = `rotate(${gpsPosition.heading}deg)`
-      } else {
-        headingEl.style.opacity = '0'
-      }
-    }
-  }, [gpsPosition])
+  }, [gpsPosition, waypoints])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div id="map-canvas" ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* MIRINO NERO AL CENTRO MAFFA */}
+      {/* MIRINO CENTRALE */}
       <div
         style={{
           position: 'absolute',
@@ -378,11 +492,8 @@ export default function MapView({
         }}
       >
         <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-          {/* Cerchio centrale */}
           <circle cx="14" cy="14" r="5" stroke="#000000" strokeWidth="2" />
-          {/* Punto centrale */}
           <circle cx="14" cy="14" r="1" fill="#000000" />
-          {/* Reticolo */}
           <line x1="14" y1="2" x2="14" y2="8" stroke="#000000" strokeWidth="2" strokeLinecap="round" />
           <line x1="14" y1="20" x2="14" y2="26" stroke="#000000" strokeWidth="2" strokeLinecap="round" />
           <line x1="2" y1="14" x2="8" y2="14" stroke="#000000" strokeWidth="2" strokeLinecap="round" />
