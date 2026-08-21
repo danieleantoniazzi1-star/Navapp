@@ -66,11 +66,12 @@ function ensureArrowIcon(map) {
   map.addImage('wind-arrow', ctx.getImageData(0, 0, size, size), { sdf: true })
 }
 
-export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState, windEnabled, windHourIndex, windRefreshKey, onWindFramesReady }) {
+export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState, windEnabled, windHourIndex, windRefreshKey, onWindFramesReady, onWindError, gpsPosition }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef([])
   const windFramesRef = useRef([])
+  const gpsMarkerRef = useRef(null)
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -195,18 +196,27 @@ export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState, 
     let cancelled = false
 
     const run = async () => {
-      const b = map.getBounds()
-      const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
-      const points = buildGrid(bbox, 7, 7)
+      onWindError?.(null)
       try {
-        const { times, frames } = await fetchWindGrid(points, 24)
+        const b = map.getBounds()
+        const bbox = { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() }
+        const points = buildGrid(bbox, 4, 4)
+        console.debug('[wind] bbox', bbox, 'punti griglia', points.length)
+
+        const { times, frames } = await fetchWindGrid(points)
         if (cancelled) return
+        if (!times.length) {
+          onWindError?.('Nessun dato ricevuto per quest\'area.')
+          return
+        }
         windFramesRef.current = frames
         onWindFramesReady?.(times)
         const src = map.getSource('wind-grid')
         if (src && frames[0]) src.setData(frames[0])
       } catch (err) {
-        console.warn('Errore nel recupero della griglia vento', err)
+        if (cancelled) return
+        console.error('[wind] errore nel recupero della griglia vento:', err)
+        onWindError?.(err.message || 'Richiesta fallita')
       }
     }
 
@@ -224,6 +234,39 @@ export default function MapView({ onMapClick, onMoveEnd, waypoints, layerState, 
     const src = map?.getSource('wind-grid')
     if (src && frame) src.setData(frame)
   }, [windHourIndex])
+
+  // Marker posizione GPS con freccia di prua (bussola o direzione stimata dal movimento)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (!gpsPosition) {
+      gpsMarkerRef.current?.remove()
+      gpsMarkerRef.current = null
+      return
+    }
+
+    if (!gpsMarkerRef.current) {
+      const el = document.createElement('div')
+      el.className = 'gps-marker'
+      el.innerHTML = '<div class="gps-heading"><div class="gps-arrow"></div></div><div class="gps-dot"></div>'
+      gpsMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([gpsPosition.lon, gpsPosition.lat])
+        .addTo(map)
+    } else {
+      gpsMarkerRef.current.setLngLat([gpsPosition.lon, gpsPosition.lat])
+    }
+
+    const headingEl = gpsMarkerRef.current.getElement().querySelector('.gps-heading')
+    if (headingEl) {
+      if (gpsPosition.heading != null) {
+        headingEl.style.opacity = '1'
+        headingEl.style.transform = `rotate(${gpsPosition.heading}deg)`
+      } else {
+        headingEl.style.opacity = '0'
+      }
+    }
+  }, [gpsPosition])
 
   return <div id="map-canvas" ref={containerRef} />
 }

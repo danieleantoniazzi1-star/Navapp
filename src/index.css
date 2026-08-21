@@ -379,6 +379,46 @@ input:focus-visible,
   min-width: 140px;
 }
 
+/* ---------- GPS position marker ---------- */
+.gps-marker {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.gps-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  border: 2px solid var(--bg-deep);
+  box-shadow: 0 0 8px var(--accent-cyan), 0 0 0 5px rgba(63, 224, 208, 0.18);
+}
+
+.gps-heading {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.gps-arrow {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 13px solid var(--accent-amber);
+  filter: drop-shadow(0 0 4px rgba(255, 183, 3, 0.6));
+}
+
 .offline-status {
   font-size: 12px;
   color: var(--text-dim);

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { getCurrentConditions } from '../services/weather'
 
 // Direzione vento/onde arriva come "da dove soffia/proviene" (standard
@@ -8,17 +8,32 @@ function toArrowRotation(fromDeg) {
   return (fromDeg + 180) % 360
 }
 
-export default function WeatherPanel({ lat, lon }) {
+// Distanza approssimata in km tra due punti (sufficiente solo per decidere
+// se la posizione si è spostata abbastanza da giustificare un nuovo fetch,
+// non per calcoli di navigazione).
+function roughDistanceKm(a, b) {
+  if (!a || !b) return Infinity
+  const dLat = a.lat - b.lat
+  const dLon = a.lon - b.lon
+  return Math.sqrt(dLat * dLat + dLon * dLon) * 111
+}
+
+const REFETCH_THRESHOLD_KM = 3
+
+export default function WeatherPanel({ lat, lon, source }) {
   const [conditions, setConditions] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const lastFetchedRef = useRef(null)
 
-  const fetchHere = useCallback(async () => {
+  const fetchNow = useCallback(async () => {
+    if (lat == null || lon == null) return
     setLoading(true)
     setError(null)
     try {
       const c = await getCurrentConditions(lat, lon)
       setConditions(c)
+      lastFetchedRef.current = { lat, lon }
     } catch (err) {
       setError('Meteo non disponibile (verifica la connessione)')
     } finally {
@@ -26,14 +41,21 @@ export default function WeatherPanel({ lat, lon }) {
     }
   }, [lat, lon])
 
+  // Aggiorna automaticamente quando la posizione (GPS o centro mappa) si
+  // sposta abbastanza da rendere la previsione precedente poco rilevante.
+  useEffect(() => {
+    if (lat == null || lon == null) return
+    if (roughDistanceKm(lastFetchedRef.current, { lat, lon }) < REFETCH_THRESHOLD_KM) return
+    fetchNow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lat, lon])
+
   return (
     <div className="panel weather-panel">
-      <h3>Vento &amp; mare</h3>
+      <h3>Vento &amp; mare · {source === 'gps' ? 'posizione GPS' : 'centro mappa'}</h3>
 
       {!conditions && !loading && !error && (
-        <p className="route-empty">
-          Inquadra un punto in mare e premi "Aggiorna" per vedere vento e stato del mare previsti lì.
-        </p>
+        <p className="route-empty">Recupero condizioni per la posizione attuale…</p>
       )}
 
       {loading && <p className="route-empty">Richiesta in corso…</p>}
@@ -71,8 +93,8 @@ export default function WeatherPanel({ lat, lon }) {
         </div>
       )}
 
-      <button className="btn primary" style={{ width: '100%', marginTop: 10 }} onClick={fetchHere} disabled={loading}>
-        Aggiorna su questo punto
+      <button className="btn primary" style={{ width: '100%', marginTop: 10 }} onClick={fetchNow} disabled={loading}>
+        Aggiorna
       </button>
     </div>
   )

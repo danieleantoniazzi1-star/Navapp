@@ -1,5 +1,5 @@
-export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHourChange, onRefresh }) {
-  const loading = enabled && times.length === 0
+export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHourChange, onRefresh, error }) {
+  const loading = enabled && times.length === 0 && !error
   const selectedTime = times[hourIndex]
 
   const label = selectedTime
@@ -20,7 +20,16 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
       />
       <span className="wind-timeline-title">VENTO</span>
 
-      {enabled && (
+      {enabled && error && (
+        <>
+          <span className="wind-timeline-label" style={{ color: 'var(--accent-red)' }}>{error}</span>
+          <button className="btn" onClick={onRefresh} style={{ flex: 'none', padding: '5px 10px' }}>
+            Riprova
+          </button>
+        </>
+      )}
+
+      {enabled && !error && (
         loading ? (
           <span className="wind-timeline-label">Caricamento previsione…</span>
         ) : (
