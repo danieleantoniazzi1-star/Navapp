@@ -10,6 +10,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Questo plugin PWA si occupa solo di rendere installabile l'app e di
 // mettere in cache l'app shell (HTML/JS/CSS) per l'avvio offline.
 export default defineConfig({
+  base: '/Navapp/', 
   plugins: [
     react(),
     VitePWA({
