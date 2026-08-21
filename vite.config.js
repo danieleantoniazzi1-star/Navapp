@@ -17,15 +17,29 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'NavApp - Navigazione Marina',
+        name: 'NavApp - Navigazione Marittima',
         short_name: 'NavApp',
-        description: 'Navigazione marina offline: mappa satellitare, carte nautiche, meteo mare, pianificazione rotte',
+        description: 'Navigazione marittima offline: mappa satellitare, carte nautiche, meteo mare, pianificazione rotte',
         theme_color: '#0b1622',
         background_color: '#0b1622',
         display: 'fullscreen',
-        icons: [
-          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' }
+		icons: [
+          {
+            src: 'pwa-192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable' // <-- Indica ad Android di estendere lo sfondo a tutto schermo
+          }
         ]
       },
       workbox: {
