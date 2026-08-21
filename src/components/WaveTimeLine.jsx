@@ -1,4 +1,4 @@
-export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHourChange, onRefresh, error }) {
+export default function WaveTimeline({ enabled, onToggle, times, hourIndex, onHourChange, onRefresh, error }) {
   const loading = enabled && times.length === 0 && !error
   const selectedTime = times[hourIndex]
 
@@ -17,9 +17,9 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
           className={`toggle ${enabled ? 'on' : ''}`}
           onClick={onToggle}
           aria-pressed={enabled}
-          aria-label="Attiva/disattiva overlay vento"
+          aria-label="Attiva/disattiva overlay onde"
         />
-        <span className="wind-timeline-title">VENTO</span>
+        <span className="wind-timeline-title">ONDE</span>
 
         {enabled && error && (
           <>
@@ -32,7 +32,7 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
 
         {enabled && !error && (
           loading ? (
-            <span className="wind-timeline-label">Caricamento previsioneâ€¦</span>
+            <span className="wind-timeline-label">Caricamento onde…</span>
           ) : (
             <>
               <input
@@ -44,7 +44,7 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
                 onChange={(e) => onHourChange(parseInt(e.target.value, 10))}
               />
               <span className="wind-timeline-label">
-                {hourIndex === 0 ? 'Adesso' : `+${hourIndex}h`}{label ? ` Â· ${label}` : ''}
+                {hourIndex === 0 ? 'Adesso' : `+${hourIndex}h`}{label ? ` · ${label}` : ''}
               </span>
               <button className="btn" onClick={onRefresh} style={{ flex: 'none', padding: '5px 10px' }}>
                 Aggiorna area
@@ -54,10 +54,10 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
         )}
       </div>
 
-      {/* SCALA COLORI VENTO */}
+      {/* SCALA COLORI ONDE */}
       {enabled && !error && !loading && times.length > 0 && (
         <div
-          className="wind-color-scale"
+          className="wave-color-scale"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -70,7 +70,7 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
             fontFamily: "'IBM Plex Mono', monospace"
           }}
         >
-          <span>0 kn</span>
+          <span>0m</span>
           <div
             style={{
               flex: 1,
@@ -79,8 +79,8 @@ export default function WindTimeline({ enabled, onToggle, times, hourIndex, onHo
               borderRadius: '3px'
             }}
           />
-          <span>15 kn</span>
-          <span>30+ kn</span>
+          <span>1.5m</span>
+          <span>3.0m+</span>
         </div>
       )}
     </div>

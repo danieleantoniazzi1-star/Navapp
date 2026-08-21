@@ -4,13 +4,10 @@ import LayerPanel from './components/LayerPanel.jsx'
 import RoutePlanner from './components/RoutePlanner.jsx'
 import OfflinePanel from './components/OfflinePanel.jsx'
 import WeatherPanel from './components/WeatherPanel.jsx'
-import WindTimeline from './components/WindTimeline.jsx'
+import ForecastPanel from './components/ForecastPanel.jsx'
 import { watchPosition, requestCompass } from './services/geolocation.js'
 
 function toBBox(center, zoom) {
-  // Bounding box approssimato attorno al centro, per la stima area offline.
-  // Approssimazione volutamente semplice: sufficiente per definire l'area
-  // da scaricare, non per calcoli di precisione cartografica.
   const span = 4 / Math.pow(2, zoom) * 40
   return {
     minLon: center.lon - span,
@@ -30,14 +27,24 @@ export default function App() {
   const [waypoints, setWaypoints] = useState([])
   const [view, setView] = useState({ lon: 12.5, lat: 43.6, zoom: 6 })
 
-  const [windEnabled, setWindEnabled] = useState(false)
+  // Modalità Previsioni: 'off' | 'wind' | 'wave'
+  const [forecastMode, setForecastMode] = useState('off')
+
+  // Stato Vento
   const [windHourIndex, setWindHourIndex] = useState(0)
   const [windRefreshKey, setWindRefreshKey] = useState(0)
   const [windTimes, setWindTimes] = useState([])
   const [windError, setWindError] = useState(null)
 
+  // Stato Onde
+  const [waveHourIndex, setWaveHourIndex] = useState(0)
+  const [waveRefreshKey, setWaveRefreshKey] = useState(0)
+  const [waveTimes, setWaveTimes] = useState([])
+  const [waveError, setWaveError] = useState(null)
+
+  // Stato GPS
   const [gpsEnabled, setGpsEnabled] = useState(false)
-  const [gpsPosition, setGpsPosition] = useState(null) // {lat, lon, accuracyM, heading, headingSource}
+  const [gpsPosition, setGpsPosition] = useState(null)
   const [gpsError, setGpsError] = useState(null)
   const stopWatchRef = useRef(null)
   const stopCompassRef = useRef(null)
@@ -46,6 +53,11 @@ export default function App() {
   const handleWindFramesReady = useCallback((times) => {
     setWindTimes(times)
     setWindHourIndex(0)
+  }, [])
+
+  const handleWaveFramesReady = useCallback((times) => {
+    setWaveTimes(times)
+    setWaveHourIndex(0)
   }, [])
 
   const handleMapClick = useCallback((pt) => {
@@ -70,8 +82,6 @@ export default function App() {
     setGpsError(null)
     setGpsEnabled(true)
 
-    // Su iOS il permesso per la bussola va richiesto nello stesso gesto
-    // utente (click) del pulsante, non dopo un await della posizione.
     try {
       const stopCompass = await requestCompass((heading) => {
         compassHeadingRef.current = heading
@@ -79,7 +89,7 @@ export default function App() {
       })
       if (typeof stopCompass === 'function') stopCompassRef.current = stopCompass
     } catch {
-      // Bussola non disponibile o permesso negato: si userà il fallback GPS.
+      // Bussola non disponibile
     }
 
     stopWatchRef.current = watchPosition(
@@ -96,10 +106,32 @@ export default function App() {
     )
   }, [gpsEnabled])
 
-  // Meteo: segue la posizione GPS se attiva, altrimenti il centro mappa.
   const weatherLat = gpsPosition ? gpsPosition.lat : view.lat
   const weatherLon = gpsPosition ? gpsPosition.lon : view.lon
   const weatherSource = gpsPosition ? 'gps' : 'map'
+
+  // Variabili derivate per il pannello ForecastPanel
+  const activeTimes = forecastMode === 'wind' ? windTimes : waveTimes
+  const activeHourIndex = forecastMode === 'wind' ? windHourIndex : waveHourIndex
+  const activeError = forecastMode === 'wind' ? windError : waveError
+  const activeLoading = forecastMode !== 'off' && activeTimes.length === 0 && !activeError
+
+  const handleHourChange = (idx) => {
+    if (forecastMode === 'wind') setWindHourIndex(idx)
+    else if (forecastMode === 'wave') setWaveHourIndex(idx)
+  }
+
+  const handleRefresh = () => {
+    if (forecastMode === 'wind') {
+      setWindTimes([])
+      setWindError(null)
+      setWindRefreshKey((k) => k + 1)
+    } else if (forecastMode === 'wave') {
+      setWaveTimes([])
+      setWaveError(null)
+      setWaveRefreshKey((k) => k + 1)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -158,30 +190,28 @@ export default function App() {
           onMoveEnd={handleMoveEnd}
           waypoints={waypoints}
           layerState={layerState}
-          windEnabled={windEnabled}
+          windEnabled={forecastMode === 'wind'}
           windHourIndex={windHourIndex}
           windRefreshKey={windRefreshKey}
           onWindFramesReady={handleWindFramesReady}
           onWindError={setWindError}
+          waveEnabled={forecastMode === 'wave'}
+          waveHourIndex={waveHourIndex}
+          waveRefreshKey={waveRefreshKey}
+          onWaveFramesReady={handleWaveFramesReady}
+          onWaveError={setWaveError}
           gpsPosition={gpsEnabled ? gpsPosition : null}
         />
 
-        <WindTimeline
-          enabled={windEnabled}
-          onToggle={() => {
-            setWindEnabled((v) => !v)
-            setWindTimes([])
-            setWindError(null)
-          }}
-          times={windTimes}
-          hourIndex={windHourIndex}
-          onHourChange={setWindHourIndex}
-          onRefresh={() => {
-            setWindTimes([])
-            setWindError(null)
-            setWindRefreshKey((k) => k + 1)
-          }}
-          error={windError}
+        <ForecastPanel
+          mode={forecastMode}
+          onModeChange={setForecastMode}
+          times={activeTimes}
+          hourIndex={activeHourIndex}
+          onHourChange={handleHourChange}
+          onRefresh={handleRefresh}
+          loading={activeLoading}
+          error={activeError}
         />
 
         <OfflinePanel currentBBox={toBBox(view, view.zoom)} currentZoom={view.zoom} />

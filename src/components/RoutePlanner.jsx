@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { legDistanceNm, legBearingDeg, totalDistanceNm, estimatedHours } from '../services/routeMath'
 import { downloadGPX } from '../services/gpx'
 
 export default function RoutePlanner({ waypoints, setWaypoints, cruiseSpeedKn = 6 }) {
+  const [speed, setSpeed] = useState(cruiseSpeedKn)
+
   const removeWaypoint = (idx) => {
     setWaypoints((wps) => wps.filter((_, i) => i !== idx))
   }
@@ -9,7 +12,8 @@ export default function RoutePlanner({ waypoints, setWaypoints, cruiseSpeedKn = 
   const clearAll = () => setWaypoints([])
 
   const total = totalDistanceNm(waypoints)
-  const hours = estimatedHours(total, cruiseSpeedKn)
+  const currentSpeed = Math.max(0.1, Number(speed) || 1)
+  const hours = estimatedHours(total, currentSpeed)
 
   return (
     <div className="panel route-panel">
@@ -45,9 +49,33 @@ export default function RoutePlanner({ waypoints, setWaypoints, cruiseSpeedKn = 
             <span>Distanza totale</span>
             <strong>{total.toFixed(1)} nm</strong>
           </div>
+
           {hours != null && (
-            <div className="route-summary">
-              <span>Tempo stimato @ {cruiseSpeedKn} kn</span>
+            <div className="route-summary" style={{ alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>Tempo stimato @</span>
+                <input
+                  type="number"
+                  min="0.5"
+                  max="50"
+                  step="0.5"
+                  value={speed}
+                  onChange={(e) => setSpeed(e.target.value)}
+                  style={{
+                    width: '45px',
+                    background: '#0a1420',
+                    border: '1px solid #3fe0d0',
+                    color: '#ffb703',
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    borderRadius: '3px',
+                    padding: '2px 0',
+                    fontSize: '12px'
+                  }}
+                />
+                <span>kn</span>
+              </div>
               <strong>{hours.toFixed(1)} h</strong>
             </div>
           )}
