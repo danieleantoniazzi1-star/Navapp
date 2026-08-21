@@ -20,39 +20,36 @@ NavApp è una Progressive Web App (PWA) progettata per la navigazione da diporto
 
 ---
 
-## 📱 Caratteristiche & UI Responsive
+## 📱 Caratteristiche, PWA & UI Responsive
 
-### 1. PWA Nativa Fullscreen & Icone Adattive
-* **Schermo Intero**: Configurato `display: 'fullscreen'` nel manifest di Vite per nascondere la barra di stato e la barra di navigazione di Android/iOS.
-* **Maskable Icon**: Implementate icone con `purpose: 'any maskable'` e sfondo pieno scuro (`#0b1622`) per eliminare il contorno o il badge bianco nel menu di Android.
+### 1. PWA Nativa Fullscreen & Gestione Cache
+* **Schermo Intero**: Configurato `display: 'fullscreen'` nel manifest per nascondere le barre di sistema Android/iOS.
+* **Maskable Icon**: Icone adattive con `purpose: 'any maskable'` e sfondo pieno scuro (`#0b1622`) per prevenire contorni o badge bianchi su Android.
+* **Versione Dinamica**: Iniezione automatica della costante `APP_VERSION` definita in `vite.config.js`.
+* **Auto-Update Cache**: Integrazione di `cleanupOutdatedCaches: true` in Workbox per eliminare la vecchia cache CSS/JS al riavvio dell'app.
 
-### 2. Layout Responsive per Mobile (Modalità Portrait)
-* **Console Bar a 2 Righe**: Telemetria principale (Lat/Lon, Zoom, Waypoint) nella riga superiore e pulsanti di controllo immediato nella riga inferiore per evitare sovrapposizioni su schermi stretti.
-* **Bottom Sheets**: I pannelli fluttuanti (*Rotta*, *Layer*, *Meteo*) si trasformano in schede ancorate in basso con angoli arrotondati, per una gestione nativa tramite swipe/scroll.
-* **Pannello Previsioni Vento**: Svincolato dall'ancoraggio verticale (`bottom: auto`), compattando il contenitore scuro attorno agli elementi per azzerare gli spazi vuoti sopra e sotto.
-* **Suggerimenti di Navigazione**: Il popup `mode-hint` ("*Clicca sulla mappa per aggiungere un waypoint*") è posizionato in alto subito sotto la barra strumenti per non coprire il pannello di gestione rotta.
+### 2. Layout Multi-Dispositivo (360px – 2560px+)
+* **Smartphone & Tablet Portrait (fino a 1024px)**:
+  * Console bar compatta su 2 righe (telemetria in alto, controlli in basso).
+  * Pannelli fluttuanti trasformati in *Bottom Sheets* ancorati in basso con angoli arrotondati.
+  * Pannello previsioni vento svincolato in altezza (`bottom: auto`, `height: auto`) per azzerare gli spazi vuoti sopra e sotto i controlli.
+* **Smartphone Landscape (Altezza < 500px)**: Dimensioni e padding ridotti per conservare la massima visibilità della mappa.
+* **Notebook & Desktop (1280px – 2560px+)**: Layout da chartplotter widescreen con pannelli trasparenti agli angoli.
 
 ---
 
 ## 🗺️ Funzionalità Principali
 
-* **Pianificazione Rotta**: Creazione dinamica di waypoint sulla mappa con calcolo automatico della distanza totale (NM) e rotta magnetica/vera.
-* **Esportazione Rotte**: Download immediato delle rotte tracciate in formato `.gpx` e `.json`.
-* **Overlay Meteo & Animazione Vento**: Selezione dei modelli di previsione vento e onde con slider temporale integrato.
-* **Mappa Offline**: Intercettazione del protocollo `offline://` per il recupero dei riquadri geografici (tile) memorizzati localmente in IndexedDB.
+* **Pianificazione Rotta**: Creazione dinamica di waypoint sulla mappa con calcolo di distanza totale (NM), rotta magnetica/vera ed ETA.
+* **Esportazione Rotte**: Download immediato delle rotte in formato `.gpx` e `.json`.
+* **Overlay Meteo & Animazione Vento**: Visualizzazione dei modelli vento e onde con slider temporale integrato.
+* **Mappa Offline**: Intercettazione del protocollo `offline://` per il recupero delle tile geografiche salvate in IndexedDB.
 
 ---
 
-## 🚀 Sviluppo Locale & Build
+## 🚀 Sviluppo Locale & Versionamento
 
-### Comandi principali
-
-```bash
-# Installazione dipendenze
-npm install
-
-# Avvio del server di sviluppo
-npm run dev
-
-# Compilazione per la produzione
-npm run build
+### Gestione Versione
+Per aggiornare la versione rilasciata della PWA, incrementa il valore all'inizio di `vite.config.js`:
+```javascript
+const APP_VERSION = '1.0.1'

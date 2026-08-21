@@ -35,6 +35,10 @@ export default function App() {
   const [waypoints, setWaypoints] = useState([])
   const [view, setView] = useState({ lon: 12.5, lat: 43.6, zoom: 6 })
 
+  // Stato AIS Navi (Live)
+  const [aisEnabled, setAisEnabled] = useState(false)
+  const [aisApiKey, setAisApiKey] = useState('')
+
   // Modalità Previsioni: 'off' | 'wind' | 'wave'
   const [forecastMode, setForecastMode] = useState('off')
 
@@ -258,6 +262,8 @@ export default function App() {
           onWaveFramesReady={handleWaveFramesReady}
           onWaveError={setWaveError}
           gpsPosition={gpsEnabled ? gpsPosition : null}
+          aisEnabled={aisEnabled}
+          aisApiKey={aisApiKey}
         />
 
         {/* MOSTRA PANNELLI SOLO SE REQUISITI DA BARRA */}
@@ -275,7 +281,16 @@ export default function App() {
         )}
 
         {showOffline && <OfflinePanel currentBBox={toBBox(view, view.zoom)} currentZoom={view.zoom} />}
-        {showLayers && <LayerPanel layerState={layerState} setLayerState={setLayerState} />}
+        {showLayers && (
+          <LayerPanel
+            layerState={layerState}
+            setLayerState={setLayerState}
+            aisEnabled={aisEnabled}
+            setAisEnabled={setAisEnabled}
+            aisApiKey={aisApiKey}
+            setAisApiKey={setAisApiKey}
+          />
+        )}
         {showRoute && <RoutePlanner waypoints={waypoints} setWaypoints={setWaypoints} />}
         {showWeather && <WeatherPanel lat={weatherLat} lon={weatherLon} source={weatherSource} />}
 
