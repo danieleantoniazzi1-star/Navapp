@@ -446,7 +446,7 @@ input:focus-visible,
    ========================================================= */
 
 @media (max-width: 768px) and (orientation: portrait) {
-  /* Console Bar: due righe ben separate (Telemetria sopra, Pulsanti sotto) */
+  /* Console Bar a due righe compatte */
   .console-bar {
     display: flex;
     flex-wrap: wrap;
@@ -457,64 +457,82 @@ input:focus-visible,
     background: var(--bg-panel-raised);
   }
 
-  .console-brand {
-    font-size: 12px;
-  }
+  .console-brand { font-size: 12px; }
+  .console-spacer { display: none; }
 
-  /* Nasconde lo spaziatore per compattare gli elementi */
-  .console-spacer {
-    display: none;
-  }
-
-  /* Dimensioni compatte ed esplicite per i readout di telemetria */
   .readout {
     font-size: 10px;
     line-height: 1.1;
   }
+  .readout strong { font-size: 11px; }
 
-  .readout strong {
-    font-size: 11px;
-  }
-
-  /* I pulsanti di controllo vanno su una riga dedicata in basso, ben distanziati */
   .console-bar button,
   .console-bar .btn {
     flex: 1 1 auto;
-    min-width: 50px;
+    min-width: 45px;
     padding: 6px 4px;
     font-size: 10px;
     text-align: center;
-    margin: 2px 0;
   }
 
-  /* Mostra sempre le etichette dei pulsanti ben leggibili */
   .console-bar button .btn-label {
     display: inline !important;
   }
 
-  /* Pannelli fluttuanti: trasformati in Bottom Sheets ancorati in basso */
+  /* Pannelli fluttuanti (Rotta, Layer, Meteo) ancorati in basso */
   .panel {
     top: auto !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
     width: 100% !important;
-    max-height: 50vh;
+    max-height: 45vh;
     overflow-y: auto;
     border-radius: 14px 14px 0 0;
     border-bottom: none;
     box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.6);
+    z-index: 30;
   }
 
-  /* Ridimensionamento barra timeline del vento */
+  /* Popup suggerimento ("Clicca sulla mappa..."): spostato in alto sotto la barra */
+  .mode-hint {
+    top: 75px !important;
+    bottom: auto !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    font-size: 10px;
+    padding: 4px 12px;
+    width: 85%;
+    text-align: center;
+    white-space: normal;
+    z-index: 15;
+  }
+
+  /* Timeline Previsioni Vento: fluida, centrata e flessibile per schermi stretti */
   .wind-timeline {
-    top: 90px;
-    width: 92%;
+    top: 75px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 90% !important;
+    max-width: 360px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
     padding: 6px 10px;
+    z-index: 25;
+  }
+
+  .wind-timeline-title {
     font-size: 10px;
   }
 
   .wind-slider {
-    width: 90px;
+    flex: 1 1 120px;
+    width: auto;
+  }
+
+  .wind-timeline-label {
+    font-size: 10px;
+    min-width: auto;
   }
 }
