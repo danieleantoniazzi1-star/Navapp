@@ -509,16 +509,20 @@ input:focus-visible,
   }
 
   /* Timeline Previsioni Vento: fluida, centrata e flessibile per schermi stretti */
+  /* Timeline Previsioni Vento: compatta senza spazi vuoti sopra/sotto */
   .wind-timeline {
     top: 75px !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
     width: 90% !important;
     max-width: 360px;
+    height: auto !important;       /* Elimina l'altezza in eccesso */
+    min-height: 0 !important;    /* Rimuove qualsiasi vincolo di altezza minima */
+    align-content: flex-start !important; /* Compatta le righe verso l'alto */
     flex-wrap: wrap;
     justify-content: center;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 8px 12px !important; /* Padding stretto ed equilibrato */
     z-index: 25;
   }
 
