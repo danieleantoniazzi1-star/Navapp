@@ -124,7 +124,9 @@ export default function MapView({
   onWaveError,
   gpsPosition,
   aisEnabled = false,
-  aisApiKey = ''
+  aisApiKey = '',
+  onAisError,
+  onAisStatus
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -318,92 +320,150 @@ export default function MapView({
     if (!aisEnabled || !aisApiKey) {
       const src = map.getSource('ais-vessels')
       if (src) src.setData(EMPTY_FC)
+      onAisStatus?.('idle')
       return
     }
 
     let socket = null
+    let cancelled = false
     const vesselsMap = new Map()
 
     const connectAis = () => {
+      onAisError?.(null)
+      onAisStatus?.('connecting')
+
       try {
         socket = new WebSocket('wss://stream.aisstream.io/v0/stream')
-
-        socket.onopen = () => {
-          const b = map.getBounds()
-          let boundingBox = [[37.0, 8.0], [45.5, 19.0]]
-          
-          if (b) {
-            // Estende l'area di 2 gradi rispetto allo schermo per coprire navi in avvicinamento
-            const minLat = Math.max(-90, b.getSouth() - 2)
-            const minLon = Math.max(-180, b.getWest() - 2)
-            const maxLat = Math.min(90, b.getNorth() + 2)
-            const maxLon = Math.min(180, b.getEast() + 2)
-            boundingBox = [[minLat, minLon], [maxLat, maxLon]]
-          }
-
-          const subscription = {
-            APIKey: aisApiKey,
-            BoundingBoxes: [boundingBox]
-          }
-          socket.send(JSON.stringify(subscription))
-        }
-
-        socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            const meta = data.MetaData
-            const type = data.MessageType
-            
-            // Supporta navi commerciali (Classe A) e da diporto/pesca (Classe B)
-            const report = data.Message[type]
-
-            // Verifica che il report contenga coordinate valide
-            if (report && 'Latitude' in report && 'Longitude' in report && report.Latitude < 90) {
-              const mmsi = report.UserID || meta?.MMSI
-              if (!mmsi) return
-
-              vesselsMap.set(mmsi, {
-                mmsi: mmsi,
-                name: meta?.ShipName?.trim() || `MMSI ${mmsi}`,
-                lat: report.Latitude,
-                lon: report.Longitude,
-                cog: report.Cog || 0,
-                sog: report.Sog || 0,
-                updatedAt: Date.now()
-              })
-
-              // Pulisce le navi obsolete (> 15 minuti)
-              const cutoff = Date.now() - 15 * 60 * 1000
-              for (const [key, v] of vesselsMap.entries()) {
-                if (v.updatedAt < cutoff) vesselsMap.delete(key)
-              }
-
-              const geojson = {
-                type: 'FeatureCollection',
-                features: Array.from(vesselsMap.values()).map((v) => ({
-                  type: 'Feature',
-                  geometry: {
-                    type: 'Point',
-                    coordinates: [v.lon, v.lat]
-                  },
-                  properties: {
-                    mmsi: v.mmsi,
-                    name: v.name,
-                    cog: v.cog,
-                    sog: v.sog
-                  }
-                }))
-              }
-
-              const src = map.getSource('ais-vessels')
-              if (src) src.setData(geojson)
-            }
-          } catch (err) {
-            // Ignora errori isolati di pacchetti malformati
-          }
-        }
       } catch (err) {
-        console.error('Errore connessione AIS:', err)
+        console.error('[AIS] Impossibile creare la connessione WebSocket:', err)
+        onAisError?.('Impossibile creare la connessione WebSocket: ' + (err.message || err))
+        onAisStatus?.('error')
+        return
+      }
+
+      socket.onopen = () => {
+        if (cancelled) return
+        console.log('[AIS] WebSocket connesso, invio sottoscrizione...')
+        onAisStatus?.('connected')
+
+        const b = map.getBounds()
+        let boundingBox = [[37.0, 8.0], [45.5, 19.0]]
+
+        if (b) {
+          // Estende l'area di 2 gradi rispetto allo schermo per coprire navi in avvicinamento
+          const minLat = Math.max(-90, b.getSouth() - 2)
+          const minLon = Math.max(-180, b.getWest() - 2)
+          const maxLat = Math.min(90, b.getNorth() + 2)
+          const maxLon = Math.min(180, b.getEast() + 2)
+          boundingBox = [[minLat, minLon], [maxLat, maxLon]]
+        }
+
+        const subscription = {
+          APIKey: aisApiKey,
+          BoundingBoxes: [boundingBox]
+        }
+        console.log('[AIS] Sottoscrizione inviata:', subscription)
+        socket.send(JSON.stringify(subscription))
+      }
+
+      // FONDAMENTALE: senza questo handler, un fallimento del socket (rete,
+      // certificato, blocco firewall/proxy) passa completamente inosservato.
+      socket.onerror = (event) => {
+        console.error('[AIS] Errore WebSocket:', event)
+        onAisError?.('Errore di connessione al servizio AIS. Controlla la rete o riprova più tardi.')
+        onAisStatus?.('error')
+      }
+
+      // FONDAMENTALE: aisstream.io chiude la connessione (spesso subito dopo
+      // onopen) quando la chiave API non è valida o quando si superano i
+      // limiti dell'account gratuito. Senza onclose, questo evento era invisibile.
+      socket.onclose = (event) => {
+        if (cancelled) return
+        console.warn('[AIS] WebSocket chiuso.', 'code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean)
+        if (!event.wasClean || event.code !== 1000) {
+          onAisError?.(
+            `Connessione AIS interrotta (code ${event.code}${event.reason ? ': ' + event.reason : ''}). ` +
+            'Possibili cause: chiave API non valida, limiti account gratuito, o formato BoundingBox rifiutato.'
+          )
+        }
+        onAisStatus?.('closed')
+      }
+
+      // Il parsing JSON e la gestione esplicita di data.error stanno FUORI
+      // dal try/catch generico, così un pacchetto malformato isolato non
+      // nasconde più un errore reale (es. { "error": "invalid API key" }).
+      socket.onmessage = (event) => {
+        let data
+        try {
+          data = JSON.parse(event.data)
+        } catch (parseErr) {
+          console.warn('[AIS] Pacchetto non-JSON ignorato:', event.data)
+          return
+        }
+
+        // aisstream.io risponde con { "error": "..." } quando la chiave o la
+        // richiesta non sono valide. Questo NON deve essere ingoiato in silenzio.
+        if (data && data.error) {
+          console.error('[AIS] Errore restituito dal server:', data.error)
+          onAisError?.('aisstream.io ha rifiutato la richiesta: ' + data.error)
+          onAisStatus?.('error')
+          return
+        }
+
+        const meta = data.MetaData
+        const type = data.MessageType
+
+        if (!type || !data.Message || !(type in data.Message)) {
+          // Messaggio di tipo non gestito/inatteso: logghiamo per diagnosi
+          // ma non è un errore bloccante.
+          console.log('[AIS] Messaggio ignorato (tipo non gestito):', type, data)
+          return
+        }
+
+        const report = data.Message[type]
+
+        // Verifica che il report contenga coordinate valide
+        if (report && 'Latitude' in report && 'Longitude' in report && report.Latitude < 90) {
+          const mmsi = report.UserID || meta?.MMSI
+          if (!mmsi) return
+
+          vesselsMap.set(mmsi, {
+            mmsi: mmsi,
+            name: meta?.ShipName?.trim() || `MMSI ${mmsi}`,
+            lat: report.Latitude,
+            lon: report.Longitude,
+            cog: report.Cog || 0,
+            sog: report.Sog || 0,
+            updatedAt: Date.now()
+          })
+
+          // Pulisce le navi obsolete (> 15 minuti)
+          const cutoff = Date.now() - 15 * 60 * 1000
+          for (const [key, v] of vesselsMap.entries()) {
+            if (v.updatedAt < cutoff) vesselsMap.delete(key)
+          }
+
+          const geojson = {
+            type: 'FeatureCollection',
+            features: Array.from(vesselsMap.values()).map((v) => ({
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [v.lon, v.lat]
+              },
+              properties: {
+                mmsi: v.mmsi,
+                name: v.name,
+                cog: v.cog,
+                sog: v.sog
+              }
+            }))
+          }
+
+          const src = map.getSource('ais-vessels')
+          if (src) src.setData(geojson)
+          onAisStatus?.('receiving')
+        }
       }
     }
 
@@ -414,7 +474,16 @@ export default function MapView({
     }
 
     return () => {
-      if (socket) socket.close()
+      cancelled = true
+      if (socket) {
+        // Rimuoviamo gli handler prima di chiudere per evitare che onclose
+        // scateni un onAisError fantasma durante lo smontaggio del componente.
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onerror = null
+        socket.onclose = null
+        socket.close()
+      }
       vesselsMap.clear()
     }
   }, [aisEnabled, aisApiKey])

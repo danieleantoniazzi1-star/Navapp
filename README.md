@@ -1,67 +1,106 @@
-# NavApp — Web app di navigazione marina
+# NavApp — Web App di Navigazione Marina
 
-Stack 100% open source / dati gratuiti, pensato per essere esteso.
+NavApp è una Progressive Web App (PWA) progettata per la navigazione da diporto e la vela. Riproduce l'estetica e la chiarezza di un chartplotter di bordo (interfaccia scura, dettagli ciano/ambra, tipografia monospaziata) sfruttando esclusivamente API, dati geografici e librerie open source/gratuite.
 
-## Architettura
+---
 
-| Strato | Scelta | Perché |
-|---|---|---|
-| Motore mappa | MapLibre GL JS | Fork open source di Mapbox GL, WebGL, buon supporto cache offline |
-| Frontend | React + Vite | Sviluppo veloce, componenti isolati per ogni pannello |
-| Satellite | Esri World Imagery (tile XYZ) | Gratuito, nessuna API key |
-| Carta nautica | OpenSeaMap (tile raster) | Boe, fari, profondità, ancoraggi, open data |
-| Vento / stato mare | Open-Meteo Marine API | Gratuita, nessuna key, onde + vento |
-| Offline | IndexedDB (via `idb`) + PWA (`vite-plugin-pwa`) | Tile scaricate a richiesta per area scelta dall'utente |
-| Rotte | Calcolo con `@turf/turf`, export GPX | Standard universale, leggibile da altri plotter |
+## 🛠️ Stack Tecnico & Architettura
 
-## Struttura cartelle
+| Componente | Tecnologia / Provider |
+|---|---|
+| **Core Frontend** | React 18 + Vite |
+| **Mappa & Rendering** | MapLibre GL JS |
+| **Mappe Base & Nautiche** | Esri World Imagery, OpenStreetMap, OpenSeaMap |
+| **Meteo & Mare** | Open-Meteo Forecast & Marine API (gratuite, no API Key) |
+| **Live AIS** | WebSocket via `aisstream.io` (Richiede API Key gratuita lato client) |
+| **PWA & Offline** | `vite-plugin-pwa` + Service Worker + IndexedDB (`idb`) |
+| **Calcoli di Navigazione**| `@turf/turf` + algoritmi custom (bearing, distanze, lat/lon) |
+| **Sensori Hardware** | HTML5 Geolocation API (Posizione) + DeviceOrientationEvent (Bussola) |
 
+---
+
+## 🗺️ Funzionalità Implementate
+
+### 1. Sistema di Mappe e Caching Offline
+* Layer multipli: Satellitare, Base stradale, Carte nautiche (batimetriche, boe, fari).
+* **Protocollo Offline**: Integrazione personalizzata `offline://` per intercettare le richieste di MapLibre e servire i riquadri (tiles) salvati localmente in IndexedDB.
+* ⏳ **Pending**: il caching effettivo dei tile in IndexedDB e la loro riproposizione via protocollo `offline://` non sono ancora completamente implementati — attualmente le richieste passano sempre in rete. Prossimo item da riprendere.
+
+### 2. Strumentazione e Rotta
+* **GPS & Bussola**: Marker dinamico sulla mappa. La bussola orienta la prua (freccia azzurra), mentre il goniometro (N, S, E, W) rimane ancorato all'orientamento geografico.
+* **Pianificazione Rotta**: Creazione di waypoint con calcolo della rotta magnetica/vera e della distanza. Se il GPS è attivo, mostra la linea di fede (bearing) verso il waypoint target.
+
+### 3. Meteo e Previsioni Marine
+* Fetch dinamico basato sul Bounding Box (BBox) visualizzato a schermo (griglia 12x12).
+* Visualizzazione vettoriale del **Vento** (frecce con direzione e velocità) e delle **Onde** (direzione e altezza) tramite interpolazione di colori e dimensioni.
+* Timeline (slider) per visualizzare le previsioni orarie.
+
+### 4. PWA, Versionamento e Responsive UI
+* Configurazione `manifest` per avvio Fullscreen e icone adattive (`maskable`).
+* Gestione della cache con auto-update (Workbox) e versionamento dinamico per forzare gli aggiornamenti lato client.
+* Interfaccia responsiva da 360px a 2560px (Console a 2 righe e Bottom Sheets su mobile, Floating Panels su Desktop).
+
+---
+
+## 🚢 Modulo AIS (Live Traffic) — Codice Pronto, Bloccato da Outage Esterno
+
+**Aggiornamento (22 Agosto 2026):** il debug è stato completato lato client. Il codice `MapView.jsx` è stato corretto e funziona correttamente. Il motivo per cui le navi non comparivano **non è un bug del nostro codice**, ma un'interruzione temporanea del servizio `aisstream.io` lato server.
+
+### ✅ Fix Applicati a `MapView.jsx`
+Il bug originale era il classico pattern di **swallow silenzioso degli errori** già visto per il modulo vento:
+* Il blocco `socket.onmessage` aveva un `try/catch` generico che ingoiava silenziosamente qualsiasi errore (incluso il caso in cui il server risponde con `{ "error": "..." }` per chiave non valida — quel messaggio veniva scartato senza log).
+* Mancavano completamente gli handler `socket.onerror` e `socket.onclose`.
+
+Fix implementati:
+1. `socket.onerror` e `socket.onclose` con log espliciti (`code`, `reason`, `wasClean`) per rendere visibile qualsiasi problema di connessione.
+2. `JSON.parse` spostato fuori dal try/catch generico, così un pacchetto malformato isolato non nasconde più un errore reale.
+3. Controllo esplicito del campo `data.error` restituito da aisstream.io in caso di chiave non valida o richiesta malformata.
+4. Prop opzionali `onAisError` / `onAisStatus` per agganciare in futuro un indicatore di stato nella UI.
+5. Cleanup degli handler prima di `socket.close()` per evitare falsi errori allo smontaggio del componente.
+
+### 🔍 Diagnosi: Causa Radice Confermata
+Verificato con test isolato da Node.js (fuori dal browser, per escludere problemi CORS) usando sia bounding box locale (Adriatico) che globale (`[[-90,-180],[90,180]]`):
+* Connessione WebSocket riuscita (nessun errore, nessuna chiusura anomala)
+* Sottoscrizione inviata correttamente con chiave API valida (verificata su aisstream.io/apikeys)
+* **Zero messaggi ricevuti** anche dopo 90+ secondi con bounding box mondiale
+
+Confermato tramite monitor di stato indipendente della community (`aisuptime.buttermilkgreen.fyi`):
+```json
+{
+  "state": "Silent Failure",
+  "websocketConnected": true,
+  "lastMessageReceived": "2026-08-19T06:18:28Z"
+}
 ```
-src/
-  components/
-    MapView.jsx       # rendering mappa + layer + click per waypoint
-    LayerPanel.jsx     # toggle satellite / base OSM / carta nautica
-    RoutePlanner.jsx   # lista waypoint, distanza/rotta, export GPX
-    OfflinePanel.jsx   # download tile per area corrente
-  services/
-    tileCache.js       # download e lettura tile da IndexedDB
-    weather.js          # fetch Open-Meteo Marine API
-    gpx.js               # export rotta in formato GPX
-    routeMath.js         # distanza (nm), rotta (bearing), ETA
-```
+Il servizio accetta connessioni ma non invia dati da almeno 3 giorni — problema noto e ricorrente (riscontrati anche outage precedenti per certificati SSL scaduti a maggio e luglio 2026, e issue GitHub aperte con lo stesso sintomo esatto segnalato da altri sviluppatori indipendentemente).
 
-## Come si avvia
+### 🌍 Alternative Valutate (e perché non sono praticabili ora)
+| Provider | Esito valutazione |
+|---|---|
+| **AISHub** | Gratuito ma richiede di possedere un ricevitore AIS fisico e contribuire un feed NMEA live per ottenere le credenziali. Non utilizzabile senza hardware dedicato. |
+| **MarineTraffic / VesselFinder API** | Ottima copertura Mediterraneo ma a pagamento — non compatibile con il principio "esclusivamente free/open source" del progetto. |
+| **aisstream.io (attuale)** | Resta la scelta migliore per il caso d'uso: gratuito, no hardware richiesto, buona copertura. Da riprendere non appena il servizio si stabilizza. |
+
+### 📋 Prossimi Passi
+* [x] ~~Debug del client AIS~~ — completato, codice corretto e pronto
+* [x] ~~Verifica causa radice~~ — confermato outage esterno lato aisstream.io
+* [ ] Monitorare la ripresa del servizio (controllare periodicamente `aisuptime.buttermilkgreen.fyi` o rieseguire il test manuale)
+* [ ] Una volta ripristinato il servizio, verificare in locale con `npm run dev` che le navi compaiano correttamente sulla mappa
+* [ ] Nel frattempo, priorità sull'implementazione del caching offline tiles (vedi sezione 1)
+
+---
+
+## 🚀 Sviluppo Locale e Deployment
 
 ```bash
+# Installa le dipendenze
 npm install
+
+# Avvia server di sviluppo locale
 npm run dev
+
+# Compila l'app per la produzione
+npm run build
 ```
 
-## Cosa manca / prossimi passi
-
-1. **Uso effettivo delle tile offline nella mappa**: al momento `tileCache.js`
-   scarica e salva le tile, ma `MapView.jsx` le legge sempre dalla rete.
-   Il prossimo passo è un `protocol` MapLibre custom (`addProtocol`) che
-   intercetta le richieste tile e, se offline o se la tile è in cache,
-   la serve da IndexedDB invece che dalla rete.
-2. **Overlay vento/mare sulla mappa** (non solo su singolo waypoint): si può
-   aggiungere un layer a frecce/particelle (es. tecnica "wind particles" con
-   Canvas/WebGL) usando una griglia di punti Open-Meteo sull'area visibile.
-3. **Icone PWA**: aggiungere `public/pwa-192.png` e `public/pwa-512.png`
-   (al momento solo referenziate nel manifest, da creare).
-4. **Routing "isocrone"** per vela: calcolo rotta ottimale considerando il
-   vento previsto lungo il percorso — funzionalità avanzata, da valutare
-   dopo che il flusso base è solido.
-5. **Persistenza rotte**: salvare le rotte create in IndexedDB (oggi si
-   perdono al refresh), con un pannello "le mie rotte".
-6. **Import GPX** oltre all'export, per caricare rotte da altri strumenti.
-
-## Note sui limiti d'uso dei dati gratuiti
-
-- Esri World Imagery e OpenSeaMap sono gratuiti per uso personale/basso
-  volume; in caso di traffico elevato o uso commerciale, valutare un
-  self-hosted tile server (es. tile server locale da estratti OSM) o un
-  provider a pagamento.
-- Open-Meteo non richiede key ma ha rate limit ragionevoli per uso non
-  commerciale; per un'app con molti utenti concorrenti va valutato un
-  layer di caching lato backend.
+Il progetto utilizza **GitHub Actions** per effettuare il deployment automatico su GitHub Pages ad ogni push sul branch `main`.
